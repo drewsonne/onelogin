@@ -44,6 +44,13 @@ type getUserQuery struct {
 	AfterCursor string `url:"after_cursor,omitempty"`
 }
 
+// MFAVerification for a device
+type MFAVerification struct {
+	DeviceId   int    `json:"device_id"`
+	StateToken string `json:"state_token"`
+	OTPToken   string `json:"otp_token"`
+}
+
 // GetUsers returns all the OneLogin users.
 func (s *UserService) GetUsers(ctx context.Context) ([]*User, error) {
 	u := "/api/1/users"
@@ -114,6 +121,27 @@ func (s *UserService) UpdateCustomAttributes(ctx context.Context, id int64, attr
 	}
 
 	req, err := s.client.NewRequest("PUT", u, post)
+	if err != nil {
+		return err
+	}
+
+	if err := s.client.AddAuthorization(ctx, req); err != nil {
+		return err
+	}
+
+	_, err = s.client.Do(ctx, req, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// VerifyFactor after authenticating a user
+func (s *UserService) VerifyFactor(ctx context.Context, verification MFAVerification) error {
+	u := "api/1/login/verify_factor"
+
+	req, err := s.client.NewRequest("POST", u, verification)
 	if err != nil {
 		return err
 	}

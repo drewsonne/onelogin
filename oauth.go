@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+var (
+	AuthenticationFailed = errors.New("authentication failed")
+	MFA          = errors.New("mfa verification required")
+)
+
 // OauthService handles communications with the authentication related methods on OneLogin.
 type OauthService service
 
@@ -113,11 +118,14 @@ func (s *OauthService) getToken(ctx context.Context) (*oauthToken, error) {
 }
 
 type authenticateResponse struct {
+	ExpiresAt    string             `json:"expires_at"`
+	ReturnToURL  string             `json:"return_to_url"`
+	SessionToken string             `json:"session_token"`
 	Status       string             `json:"status"`
 	User         *AuthenticatedUser `json:"user"`
-	ReturnToURL  string             `json:"return_to_url"`
-	ExpiresAt    string             `json:"expires_at"`
-	SessionToken string             `json:"session_token"`
+	StateToken   string             `json:"state_token"`
+	CallbackURL  string             `json:"callback_url"`
+	Devices      []*MFADevice       `json:"devices"`
 }
 
 // AuthenticatedUser contains user information for the Authentication.
@@ -127,11 +135,18 @@ type AuthenticatedUser struct {
 	Email     string `json:"email"`
 	FirstName string `json:"firstname"`
 	LastName  string `json:"lastname"`
+	Devices   []*MFADevice
+}
+
+// MFADevice describes an MFA device
+type MFADevice struct {
+	Type string `json:"device_type"`
+	ID   int    `json:"device_id"`
 }
 
 // Authenticate a user from an email(or username) and a password.
 // It returns nil on success.
-func (s *OauthService) Authenticate(ctx context.Context, emailOrUsername string, password string) (*AuthenticatedUser, error) {
+func (s *OauthService) Authenticate(ctx context.Context, emailOrUsername string, password string) (user *AuthenticatedUser, err error) {
 	u := "/api/1/login/auth"
 
 	a := authenticationParams{
@@ -155,9 +170,19 @@ func (s *OauthService) Authenticate(ctx context.Context, emailOrUsername string,
 		return nil, err
 	}
 
-	if len(d) != 1 || d[0].Status != "Authenticated" {
-		return nil, errors.New("authentication failed")
+	if d[0].StateToken != "" && len(d[0].Devices) > 1 {
+		s.client.User.VerifyFactor(ctx, MFAVerification{
+			DeviceId: d[0].Devices[0].ID,
+		})
+		return
 	}
 
-	return d[0].User, nil
+	if len(d) != 1 || d[0].Status != "Authenticated" {
+		err = AuthenticationFailed
+	} else {
+		user = d[0].User
+		user.Devices = d[0].Devices
+	}
+
+	return user, err
 }
