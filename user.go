@@ -46,7 +46,7 @@ type getUserQuery struct {
 
 // MFAVerification for a device
 type MFAVerification struct {
-	DeviceId   int    `json:"device_id"`
+	DeviceId   int    `json:"device_id,string"`
 	StateToken string `json:"state_token"`
 	OTPToken   string `json:"otp_token"`
 }
@@ -138,7 +138,7 @@ func (s *UserService) UpdateCustomAttributes(ctx context.Context, id int64, attr
 }
 
 // VerifyFactor after authenticating a user
-func (s *UserService) VerifyFactor(ctx context.Context, verification MFAVerification) error {
+func (s *UserService) VerifyFactor(ctx context.Context, verification *MFAVerification) error {
 	u := "api/1/login/verify_factor"
 
 	req, err := s.client.NewRequest("POST", u, verification)
@@ -150,7 +150,8 @@ func (s *UserService) VerifyFactor(ctx context.Context, verification MFAVerifica
 		return err
 	}
 
-	_, err = s.client.Do(ctx, req, nil)
+	var d []mfaResponse
+	_, err = s.client.Do(ctx, req, &d)
 	if err != nil {
 		return err
 	}

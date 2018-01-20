@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
 var (
 	AuthenticationFailed = errors.New("authentication failed")
-	MFA          = errors.New("mfa verification required")
+	MFA                  = errors.New("mfa verification required")
 )
 
 // OauthService handles communications with the authentication related methods on OneLogin.
@@ -130,12 +131,21 @@ type authenticateResponse struct {
 
 // AuthenticatedUser contains user information for the Authentication.
 type AuthenticatedUser struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username"`
-	Email     string `json:"email"`
-	FirstName string `json:"firstname"`
-	LastName  string `json:"lastname"`
-	Devices   []*MFADevice
+	ID          int64            `json:"id"`
+	Username    string           `json:"username"`
+	Email       string           `json:"email"`
+	FirstName   string           `json:"firstname"`
+	LastName    string           `json:"lastname"`
+	Devices     []*MFADevice     `json:"-"`
+	MFAResponse *MFAVerification `json:"-"`
+}
+
+type mfaResponse struct {
+	ExpiresAt    string             `json:"expires_at"`
+	SessionToken string             `json:"state_token"`
+	Status       string             `json:"status"`
+	ReturnToURL  string             `json:"return_to_url"`
+	User         *AuthenticatedUser `json:"user"`
 }
 
 // MFADevice describes an MFA device
@@ -170,19 +180,19 @@ func (s *OauthService) Authenticate(ctx context.Context, emailOrUsername string,
 		return nil, err
 	}
 
-	if d[0].StateToken != "" && len(d[0].Devices) > 1 {
-		s.client.User.VerifyFactor(ctx, MFAVerification{
-			DeviceId: d[0].Devices[0].ID,
-		})
-		return
-	}
-
-	if len(d) != 1 || d[0].Status != "Authenticated" {
+	if len(d) != 1 {
 		err = AuthenticationFailed
-	} else {
+	} else if (d[0].User != nil) {
 		user = d[0].User
-		user.Devices = d[0].Devices
+		if (strings.HasSuffix(d[0].CallbackURL, "verify_factor")) {
+			user.Devices = d[0].Devices
+			user.MFAResponse = &MFAVerification{
+				StateToken: d[0].StateToken,
+			}
+		} else {
+			err = AuthenticationFailed
+		}
 	}
 
-	return user, err
+	return
 }

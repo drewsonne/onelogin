@@ -8,9 +8,11 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"reflect"
 	"sync"
+	"log"
 
 	"github.com/google/go-querystring/query"
 )
@@ -160,6 +162,14 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}) (*Res
 	}
 
 	if v != nil {
+
+		respData, err := httputil.DumpResponse(resp, true)
+		if err == nil {
+			log.Printf("[DEBUG] "+logRespMsg, req.URL.String(), string(respData))
+		} else {
+			log.Printf("[ERROR] %s API Response error: %#v", req.URL.String(), err)
+		}
+
 		if w, ok := v.(io.Writer); ok {
 			io.Copy(w, resp.Body)
 		} else {
@@ -293,3 +303,13 @@ func (r *ErrorResponse) Error() string {
 func buildURL(baseURL string, args ...interface{}) string {
 	return fmt.Sprintf(baseURL, args...)
 }
+
+const logReqMsg = `%s API Request Details:
+---[ REQUEST ]---------------------------------------
+%s
+-----------------------------------------------------`
+
+const logRespMsg = `%s API Response Details:
+---[ RESPONSE ]--------------------------------------
+%s
+-----------------------------------------------------`
